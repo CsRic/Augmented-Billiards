@@ -1,0 +1,7 @@
+Builds/
+Library/
+Logs/
+Temp/
+UserSettings/
+.*/
+!.gitignore
