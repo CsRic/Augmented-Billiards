@@ -72,6 +72,7 @@
     <Compile Include="Assets\PassthroughCameraApiSamples\MultiObjectDetection\DetectionManager\Scripts\DetectionUiTextWritter.cs" />
     <Compile Include="Assets\PassthroughCameraApiSamples\ShaderSample\Scripts\ShaderSampleManager.cs" />
     <Compile Include="Assets\PassthroughCameraApiSamples\PassthroughCamera\Scripts\PassthroughCameraDebugger.cs" />
+    <Compile Include="Assets\PassthroughCameraApiSamples\AugmentedBilliards\Scripts\VirtualStick.cs" />
     <Compile Include="Assets\PassthroughCameraApiSamples\BrightnessEstimation\Scripts\BrightnessEstimationManager.cs" />
     <Compile Include="Assets\PassthroughCameraApiSamples\AugmentedBilliards\Scripts\CameraToWorldManagerPassive.cs" />
     <Compile Include="Assets\PassthroughCameraApiSamples\AnchorToWorld\Scripts\CameraToWorldManagerSimple.cs" />
@@ -87,9 +88,11 @@
     <Compile Include="Assets\PassthroughCameraApiSamples\MultiObjectDetection\SentisInference\Scripts\SentisInferenceUiManager.cs" />
     <Compile Include="Assets\PassthroughCameraApiSamples\CameraViewer\Scripts\CameraViewerManager.cs" />
     <Compile Include="Assets\PassthroughCameraApiSamples\StartScene\Scripts\LaserPointer.cs" />
+    <Compile Include="Assets\PassthroughCameraApiSamples\AugmentedBilliards\Scripts\Prediction.cs" />
     <Compile Include="Assets\PassthroughCameraApiSamples\MultiObjectDetection\SentisInference\Scripts\SentisInferenceRunManager.cs" />
     <Compile Include="Assets\PassthroughCameraApiSamples\BrightnessEstimation\Scripts\BrightnessEstimationDebugger.cs" />
     <Compile Include="Assets\PassthroughCameraApiSamples\StartScene\Scripts\HandedInputSelector.cs" />
+    <Compile Include="Assets\PassthroughCameraApiSamples\AugmentedBilliards\Scripts\GenericPassthroughCameraUtils.cs" />
     <Compile Include="Assets\PassthroughCameraApiSamples\CameraToWorld\Scripts\CameraToWorldCameraCanvas.cs" />
     <Compile Include="Assets\PassthroughCameraApiSamples\StartScene\Scripts\StartMenu.cs" />
     <Compile Include="Assets\PassthroughCameraApiSamples\StartScene\Scripts\ReturnToStartScene.cs" />

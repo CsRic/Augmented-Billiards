@@ -41,6 +41,7 @@ namespace PassthroughCameraSamples.MultiObjectDetection
         private bool m_isWaiting = false;
         private float m_delayPauseBackTime = 0;
         public event Action OnInferenceResultsReady;
+
         #region Unity Functions
         private IEnumerator Start()
         {
@@ -83,6 +84,8 @@ namespace PassthroughCameraSamples.MultiObjectDetection
                 }
                 // Update Capture data
                 m_uiInference.SetDetectionCapture(targetTexture);
+                m_uiInference.startCamePoseWorld = PassthroughCameraUtils.GetCameraPoseInWorld(PassthroughCameraEye.Right);
+                m_uiInference.startIntr = PassthroughCameraUtils.GetCameraIntrinsics(PassthroughCameraEye.Right);
                 // Convert the texture to a Tensor and schedule the inference
                 m_input = TextureConverter.ToTensor(targetTexture, m_inputSize.x, m_inputSize.y, 3);
                 m_schedule = m_engine.ScheduleIterable(m_input);

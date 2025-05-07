@@ -10,6 +10,9 @@ using static PassthroughCameraSamples.MultiObjectDetection.SentisInferenceUiMana
 
 namespace PassthroughCameraSamples.MultiObjectDetection
 {
+    // ─────────────────────────────────────────────────────────────────────────
+    //  DetectionManager
+    // ─────────────────────────────────────────────────────────────────────────
     [MetaCodeSample("PassthroughCameraApiSamples-MultiObjectDetection")]
     public class DetectionManager : MonoBehaviour
     {
@@ -18,64 +21,53 @@ namespace PassthroughCameraSamples.MultiObjectDetection
         [Header("Controls configuration")]
         [SerializeField] private OVRInput.RawButton m_actionButton = OVRInput.RawButton.A;
 
-        [Header("Ui references")]
+        [Header("UI references")]
         [SerializeField] private DetectionUiMenuManager m_uiMenuManager;
 
-        [Header("Placement configureation")]
-        [SerializeField] private GameObject m_spwanMarker; // virtual ball
+        [Header("Placement configuration")]
+        [SerializeField] private GameObject m_spwanMarker;
         [SerializeField] private EnvironmentRayCastSampleManager m_environmentRaycast;
         [SerializeField] private float m_spawnDistance = 0.05f;
         [SerializeField] private AudioSource m_placeSound = null;
 
-        [Header("Sentis inference ref")]
+        [Header("Sentis inference reference")]
         [SerializeField] private SentisInferenceRunManager m_runInference;
-        [SerializeField] private SentisInferenceUiManager m_uiInference;
-        [SerializeField] private AnchorManager m_anchorManager = null;
+        [SerializeField] private SentisInferenceUiManager  m_uiInference;
+        [SerializeField] private AnchorManager             m_anchorManager = null;
+        [SerializeField] private VirtualStick              m_virtualStick  = null;
+
         [Header("Auto‑spawn settings")]
         [SerializeField] private float m_markerLife = 2f;
 
         [Space(10)]
         public UnityEvent<int> OnObjectsIdentified;
+
         [Header("Ray debug draw")]
         [SerializeField] private Material m_rayMaterial;
-        [SerializeField] private float m_rayWidth = 0.05f;
-        [SerializeField] private float m_rayDefaultLen = 0.5f;
+        [SerializeField] private float    m_rayWidth      = 0.05f;
+        [SerializeField] private float    m_rayDefaultLen = 0.5f;
+
+        // debug rendering of restored world coords
+        [Header("State debug (restored world objects)")]
+        [SerializeField] private float    m_debugPointScale = 0.03f;
+        [SerializeField] private Material m_debugRedMat     = null;
+
         private const float nearOffset = 0.1f;
-        private readonly List<GameObject> m_rayPool = new();
-        private bool m_isPaused = true;
-        private List<GameObject> m_spwanedEntities = new();
-        private bool m_isStarted = false;
-        private bool m_isSentisReady = false;
-        private float m_delayPauseBackTime = 0;
+
+        private readonly List<GameObject> m_rayPool        = new();
+        private readonly List<GameObject> m_stateDebugObjs = new();
+
+        private bool   m_isPaused      = true;
+        private bool   m_isStarted     = false;
+        private bool   m_isSentisReady = false;
+        private float  m_delayPauseBackTime = 0;
         private Vector3 m_headPosAtInferenceStart = Vector3.zero;
         private Vector3 m_headForAtInferenceStart = Vector3.zero;
 
-        #region Unity Functions
+        private LineRenderer m_stickLine = null;
+        private List<LineRenderer> m_predictLines = new();
 
-        private void Awake()
-        {
-            OVRManager.display.RecenteredPose += CleanMarkersCallBack;
-
-            m_runInference.OnInferenceResultsReady += HandleInferenceResultsReady;
-        }
-
-        private void OnDestroy()
-        {
-            m_runInference.OnInferenceResultsReady -= HandleInferenceResultsReady;
-        }
-
-        /// <summary>
-        /// Sentis 推理结果就绪 → 立即尝试生成 / 更新 Marker
-        /// </summary>
-        private void HandleInferenceResultsReady()
-        {
-            if (m_isPaused) return;                     // Respect Pause
-            if (m_anchorManager == null) return;
-            if (!m_anchorManager.IsStable()) return;
-
-            var bounds = m_anchorManager.getBounds();
-            SpwanCurrentDetectedObjectsAuto(bounds);
-        }
+        // inner data ----------------------------------------------------------
         private class MarkerInfo
         {
             public GameObject go;
@@ -83,16 +75,62 @@ namespace PassthroughCameraSamples.MultiObjectDetection
             public float lastSeenTime;
         }
         private readonly List<MarkerInfo> m_activeMarkers = new();
+
         public struct BallInfoNormalized
         {
-            public string ClassName;   // 例如 "8‑ball" / "red" / "cue"
-            public Vector2 UV;          // 归一化桌面坐标 (u∈[0,1], v∈[0,ratio])
+            public string  ClassName;
+            public Vector2 UV;
         }
         public struct TableState
         {
-            public Vector2 TableSize; // (1 , ratio)，ratio = 短/长
+            public Vector2                TableSize;
             public List<BallInfoNormalized> Balls;
+            public Vector2                StickPos;
+            public Vector2                StickDir;
         }
+
+        // ───────────────────────── Unity lifecycle ──────────────────────────
+        private void Awake()
+        {
+            m_runInference.OnInferenceResultsReady += HandleInferenceResultsReady;
+        }
+        private void OnDestroy()
+        {
+            m_runInference.OnInferenceResultsReady -= HandleInferenceResultsReady;
+        }
+        private IEnumerator Start()
+        {
+            var sentis = FindAnyObjectByType<SentisInferenceRunManager>();
+            while (!sentis.IsModelLoaded) yield return null;
+            m_isSentisReady      = true;
+            m_delayPauseBackTime = Time.time;
+        }
+        private void Update()
+        {
+            bool hasCam = m_webCamTextureManager.WebCamTexture != null;
+            if (!m_isStarted && hasCam && m_isSentisReady)
+            {
+                m_uiMenuManager.OnInitialMenu(m_environmentRaycast.HasScenePermission());
+                m_isStarted = true;
+            }
+
+            if (!m_runInference.IsRunning())
+            {
+                m_runInference.RunInference(m_webCamTextureManager.WebCamTexture);
+                m_headPosAtInferenceStart = Camera.main.transform.position;
+                m_headForAtInferenceStart = Camera.main.transform.forward;
+            }
+        }
+
+        // ───────────────────────── inference callback ───────────────────────
+        private void HandleInferenceResultsReady()
+        {
+            if (m_isPaused) return;
+            if (m_anchorManager == null || !m_anchorManager.IsStable()) return;
+            SpwanCurrentDetectedObjectsAuto(m_anchorManager.getBounds());
+        }
+
+        // ───────────────────────── marker utilities ─────────────────────────
         private bool IsInsideFov(Vector3 worldPos)
         {
             var dir = (worldPos - m_headPosAtInferenceStart).normalized;
@@ -100,41 +138,26 @@ namespace PassthroughCameraSamples.MultiObjectDetection
         }
         private void SpawnOrRefreshMarker(Vector3 hitPos, string className)
         {
-            List<MarkerInfo> same_targets = new();
+            List<MarkerInfo> same = new();
             foreach (var m in m_activeMarkers)
-            {
                 if (Vector3.Distance(m.go.transform.position, hitPos) <= m_spawnDistance)
-                {
-                    same_targets.Add(m);
-                }
-            }
+                    same.Add(m);
 
-            if (same_targets.Count > 0)
+            if (same.Count > 0)
             {
-                // same object, delete the old one(s)
-                for(int i = same_targets.Count - 1; i >= 0; --i)
+                foreach (var m in same)
                 {
-                    var m = same_targets[i];
-                    same_targets.RemoveAt(i);
                     Destroy(m.go);
                     m_activeMarkers.Remove(m);
                 }
             }
-            else
-            {
-                // make a sound for the new object
-                if (m_placeSound != null) m_placeSound.Play();
-            }
+            else if (m_placeSound != null) m_placeSound.Play();
 
             var g = Instantiate(m_spwanMarker);
             g.transform.SetPositionAndRotation(hitPos, Quaternion.identity);
-            // g.GetComponent<DetectionSpawnMarkerAnim>().SetYoloClassName(className);
-
             m_activeMarkers.Add(new MarkerInfo
             {
-                go = g,
-                className = className,
-                lastSeenTime = Time.time
+                go = g, className = className, lastSeenTime = Time.time
             });
         }
         private void CullExpiredMarkers()
@@ -155,301 +178,282 @@ namespace PassthroughCameraSamples.MultiObjectDetection
                 }
             }
         }
-        private IEnumerator Start()
-        {
-            // Wait until Sentis model is loaded
-            var sentisInference = FindAnyObjectByType<SentisInferenceRunManager>();
-            while (!sentisInference.IsModelLoaded)
-            {
-                yield return null;
-            }
-            m_isSentisReady = true;
-            m_delayPauseBackTime = Time.time;
-        }
 
-        private void Update()
-        {
-            // Get the WebCamTexture CPU image
-            var hasWebCamTextureData = m_webCamTextureManager.WebCamTexture != null;
-
-            if (!m_isStarted)
-            {
-                // Manage the Initial Ui Menu
-                if (hasWebCamTextureData && m_isSentisReady)
-                {
-                    m_uiMenuManager.OnInitialMenu(m_environmentRaycast.HasScenePermission());
-                    m_isStarted = true;
-                }
-            }
-            else
-            {
-                // Modification: Auto detection
-                // update per 0.5 seconds
-                // if (Time.time - m_delayPauseBackTime > 0.5f)
-                // {
-                //     m_delayPauseBackTime = Time.time;
-                //     if (m_anchorManager != null && m_anchorManager.IsStable())
-                //     {
-                //         List<Vector3> bounds = m_anchorManager.getBounds();
-                //         SpwanCurrentDetectedObjectsAuto(bounds);
-                //     }
-                // }
-
-            }
-
-            // Run a new inference when the current inference finishes
-            if (!m_runInference.IsRunning())
-            {
-                m_runInference.RunInference(m_webCamTextureManager.WebCamTexture);
-                m_headPosAtInferenceStart = Camera.main.transform.position;
-                m_headForAtInferenceStart = Camera.main.transform.forward;
-            }
-        }
-        #endregion
-
-        #region Marker Functions
-        /// <summary>
-        /// Clean 3d markers when the tracking space is re-centered.
-        /// </summary>
-        private void CleanMarkersCallBack()
-        {
-            foreach (var e in m_spwanedEntities)
-            {
-                Destroy(e, 0.1f);
-            }
-            m_spwanedEntities.Clear();
-            OnObjectsIdentified?.Invoke(-1);
-        }
-        private void SpwanCurrentDetectedObjectsAuto(List<Vector3> bounds)
-        {
-            if (bounds.Count < 4) return;
-            ClearDebugRays();
-            var p0 = bounds[0];
-            var p1 = bounds[1];
-            var p2 = bounds[2];
-            var p3 = bounds[3];
-
-            int newCount = 0;
-            foreach (var box in m_uiInference.BoxDrawn)
-            {
-                // Generate a ray
-                if (!box.WorldPos.HasValue) continue;
-                Vector3 box_pos = box.WorldPos.Value;
-                Ray ray = new Ray(m_headPosAtInferenceStart, (box_pos - m_headPosAtInferenceStart).normalized);
-
-                float rayLen = m_rayDefaultLen;
-                if (RayIntersectsTriangle(ray, p0, p1, p2, out Vector3 hit) ||
-                    RayIntersectsTriangle(ray, p0, p2, p3, out hit))
-                {
-                    if (!IsInsideFov(hit)) continue;
-                    rayLen = Vector3.Distance(ray.origin, hit);
-                    SpawnOrRefreshMarker(hit, box.ClassName);
-                    ++newCount;
-                }
-                DrawDebugRay(ray, rayLen);
-            }
-            CullExpiredMarkers();
-            // if (newCount > 0 && m_placeSound != null) m_placeSound.Play();
-            OnObjectsIdentified?.Invoke(newCount);
-        }
-
-        private bool RayIntersectsTriangle(Ray ray, Vector3 v0, Vector3 v1, Vector3 v2, out Vector3 hitPoint)
-        {
-            hitPoint = Vector3.zero;
-
-            Vector3 edge1 = v1 - v0;
-            Vector3 edge2 = v2 - v0;
-            Vector3 h = Vector3.Cross(ray.direction, edge2);
-            float a = Vector3.Dot(edge1, h);
-            if (Mathf.Abs(a) < 1e-6)
-                return false; // Parallel
-
-            float f = 1.0f / a;
-            Vector3 s = ray.origin - v0;
-            float u = f * Vector3.Dot(s, h);
-            if (u < 0.0 || u > 1.0)
-                return false;
-
-            Vector3 q = Vector3.Cross(s, edge1);
-            float v = f * Vector3.Dot(ray.direction, q);
-            if (v < 0.0 || u + v > 1.0)
-                return false;
-
-            float t = f * Vector3.Dot(edge2, q);
-            if (t > 1e-6)
-            {
-                hitPoint = ray.origin + ray.direction * t;
-                return true;
-            }
-            return false;
-        }
-
-        private void ClearDebugRays()
-        {
-            foreach (var go in m_rayPool) Destroy(go);
-            m_rayPool.Clear();
-        }
-
-        private void DrawDebugRay(Ray ray, float length)
+        // ───────────────────────── ray debug helpers ────────────────────────
+        private void ClearDebugRays()  { foreach (var g in m_rayPool) Destroy(g); m_rayPool.Clear(); }
+        private void DrawDebugRay(Ray ray, float len)
         {
             Vector3 p0 = ray.origin + ray.direction * nearOffset;
-            Vector3 p1 = p0 + ray.direction * (length - nearOffset);
+            Vector3 p1 = p0 + ray.direction * (len - nearOffset);
 
             var go = new GameObject("DebugRay");
             var lr = go.AddComponent<LineRenderer>();
-
             lr.positionCount = 2;
             lr.SetPosition(0, p0);
             lr.SetPosition(1, p1);
-
             lr.startWidth = lr.endWidth = m_rayWidth;
             lr.useWorldSpace = true;
-
-            if (m_rayMaterial != null)
-                lr.material = m_rayMaterial;
-            else
-            {
-                lr.material = new Material(Shader.Find("Unlit/Color")) { color = Color.cyan };
-                lr.material.enableInstancing = true;
-            }
-
+            lr.material = m_rayMaterial ?? new Material(Shader.Find("Unlit/Color")){color=Color.cyan};
             m_rayPool.Add(go);
         }
 
-        #endregion
-
-        #region Public Functions
-        /// <summary>
-        /// Pause the detection logic when the pause menu is active
-        /// </summary>
-        public void OnPause(bool pause)
+        // ───────────────────────── marker flow ──────────────────────────────
+        private void SpwanCurrentDetectedObjectsAuto(List<Vector3> b)
         {
-            m_isPaused = pause;
+            if (b.Count < 4) return;
+            ClearDebugRays();
+
+            int newCnt = 0;
+            foreach (var box in m_uiInference.BoxDrawn)
+            {
+                if (!box.WorldPos.HasValue) continue;
+                Vector3 boxPos = box.WorldPos.Value;
+                Ray ray = new Ray(m_headPosAtInferenceStart, (boxPos - m_headPosAtInferenceStart).normalized);
+
+                float len = m_rayDefaultLen;
+                if (HitTable(ray, b, out Vector3 hit))
+                {
+                    if (!IsInsideFov(hit)) continue;
+                    len = Vector3.Distance(ray.origin, hit);
+                    SpawnOrRefreshMarker(hit, box.ClassName);
+                    ++newCnt;
+                }
+                DrawDebugRay(ray, len);
+            }
+            CullExpiredMarkers();
+            OnObjectsIdentified?.Invoke(newCnt);
         }
-        #endregion
-
-        /// <summary>
-        /// 计算“当前局面”：把活动球心映射到归一化桌面坐标系并返回。
-        /// </summary>
-        /// <param name="bounds">AnchorManager 提供的四个桌面顶点，顺/逆时针即可</param>
-        public TableState? GetCurrentTableState(List<Vector3> bounds)
+        private static bool HitTable(Ray r, List<Vector3> b, out Vector3 hit)
         {
-            if (bounds == null || bounds.Count != 4)
-                return null;
+            bool A = RayIntersectsTriangle(r, b[0], b[1], b[2], out hit);
+            if (A) return true;
+            return RayIntersectsTriangle(r, b[0], b[2], b[3], out hit);
+        }
+        private static bool RayIntersectsTriangle(
+            Ray ray, Vector3 v0, Vector3 v1, Vector3 v2, out Vector3 hitPoint)
+        {
+            hitPoint = Vector3.zero;
+            Vector3 e1 = v1 - v0, e2 = v2 - v0, h = Vector3.Cross(ray.direction, e2);
+            float a = Vector3.Dot(e1, h);
+            if (Mathf.Abs(a) < 1e-6f) return false;
+            float f = 1f / a;
+            Vector3 s = ray.origin - v0;
+            float u = f * Vector3.Dot(s, h);
+            if (u < 0f || u > 1f) return false;
+            Vector3 q = Vector3.Cross(s, e1);
+            float v = f * Vector3.Dot(ray.direction, q);
+            if (v < 0f || u + v > 1f) return false;
+            float t = f * Vector3.Dot(e2, q);
+            if (t > 1e-6f) { hitPoint = ray.origin + ray.direction * t; return true; }
+            return false;
+        }
 
-            // 1) 收集球心世界坐标
-            var ballWorldPos = new List<Vector3>(m_activeMarkers.Count);
-            foreach (var m in m_activeMarkers)
-                ballWorldPos.Add(m.go.transform.position);
+        // ───────────────────────── public API ───────────────────────────────
+        public void OnPause(bool pause) => m_isPaused = pause;
 
-            // 2) 调用前面写好的工具函数完成投影与归一化
-            var mapRes = TableCoordinateUtil.MapBallsToTable(bounds, ballWorldPos);
+        public TableState? GetCurrentTableState()
+        {
+            var bounds = m_anchorManager.getBounds();
+            if (bounds == null || bounds.Count != 4) return null;
 
-            if (mapRes == null)
-                return null;
-            // 3) 结合类别名拼装结果
+            var ballsPos = new List<Vector3>(m_activeMarkers.Count);
+            foreach (var m in m_activeMarkers) ballsPos.Add(m.go.transform.position);
+
+            (Vector3 stickPos, Vector3 stickDir) = m_virtualStick.GetStickStatus();
+            var res = TableCoordinateUtil.MapBallsToTable(bounds, ballsPos, stickPos, stickDir);
+            if (res == null) return null;
+
             var balls = new List<BallInfoNormalized>(m_activeMarkers.Count);
             for (int i = 0; i < m_activeMarkers.Count; ++i)
-            {
-                balls.Add(new BallInfoNormalized
-                {
-                    ClassName = m_activeMarkers[i].className,
-                    UV = mapRes.Value.BallUVs[i]
-                });
-            }
+                balls.Add(new BallInfoNormalized { ClassName = m_activeMarkers[i].className,
+                                                   UV = res.Value.BallUVs[i] });
 
             return new TableState
             {
-                TableSize = mapRes.Value.TableSize,
-                Balls = balls
+                TableSize = res.Value.TableSize,
+                Balls     = balls,
+                StickPos  = res.Value.StickPos,
+                StickDir  = res.Value.StickDir
             };
+        }
+
+        public void RenderNormalizedState(TableState state)
+        {
+            // clear previous
+            foreach (var g in m_stateDebugObjs) Destroy(g);
+            m_stateDebugObjs.Clear();
+            if (m_stickLine != null) Destroy(m_stickLine.gameObject);
+            foreach (var g in m_predictLines) Destroy(g.gameObject);
+            m_predictLines.Clear();
+
+            if (!TableCoordinateUtil.TryBuildBasis(m_anchorManager.getBounds(),
+                                                   out TableCoordinateUtil.TableBasis tb))
+                return;
+
+            Vector3 W(Vector2 uv) => tb.UVToWorld(uv);
+            Vector3 D(Vector2 dirUv) => tb.DirUVToWorld(dirUv).normalized;
+
+            // balls
+            foreach (var b in state.Balls)
+            {
+                var g = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                g.transform.position = W(b.UV);
+                g.transform.localScale = Vector3.one * m_debugPointScale;
+                if (m_debugRedMat != null)
+                    g.GetComponent<Renderer>().material = m_debugRedMat;
+                m_stateDebugObjs.Add(g);
+            }
+            // stick point
+            var sp = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            sp.transform.position = W(state.StickPos);
+            sp.transform.localScale = Vector3.one * m_debugPointScale;
+            if (m_debugRedMat != null)
+                sp.GetComponent<Renderer>().material = m_debugRedMat;
+            m_stateDebugObjs.Add(sp); 
+
+            // stick dir line
+            Vector3 dirW = D(state.StickDir);
+            float len = 0.25f;
+            m_stickLine = new GameObject("StickDirLine").AddComponent<LineRenderer>();
+            m_stickLine.positionCount = 2;
+            m_stickLine.SetPosition(0, sp.transform.position);
+            m_stickLine.SetPosition(1, sp.transform.position + dirW * len);
+            m_stickLine.startWidth = m_stickLine.endWidth = 0.01f;
+            m_stickLine.useWorldSpace = true;
+            if (m_debugRedMat != null) m_stickLine.material = m_debugRedMat;
+
+            // basis
+            // var eL = new GameObject("EdgeLong").AddComponent<LineRenderer>();
+            // eL.positionCount = 2;
+            // eL.SetPosition(0, tb.origin);
+            // eL.SetPosition(1, tb.origin + tb.edgeLong);
+            // eL.startWidth = eL.endWidth = 0.01f;
+            // eL.useWorldSpace = true;
+            // if (m_debugRedMat != null) eL.material = m_debugRedMat;
+            // m_predictLines.Add(eL);
+            // var eS = new GameObject("EdgeShort").AddComponent<LineRenderer>();
+            // eS.positionCount = 2;
+            // eS.SetPosition(0, tb.origin);
+            // eS.SetPosition(1, tb.origin + tb.edgeShort);
+            // eS.startWidth = eS.endWidth = 0.01f;
+            // eS.useWorldSpace = true;
+            // if (m_debugRedMat != null) eS.material = m_debugRedMat;
+            // m_predictLines.Add(eS);
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    //  TableCoordinateUtil
+    // ─────────────────────────────────────────────────────────────────────────
     public static class TableCoordinateUtil
     {
-        public struct TableMappingResult
+        // basis struct -------------------------------------------------------
+        public readonly struct TableBasis
         {
-            public Vector2 TableSize;       // (1, ratio)
-            public List<Vector2> BallUVs;   // 每个球的 (u,v) 归一化坐标
+            public readonly Vector3 origin;
+            public readonly Vector3 edgeLong;
+            public readonly Vector3 edgeShort;
+            public readonly float   lenLong;
+            public readonly float   ratio;
+
+            internal TableBasis(Vector3 p0, Vector3 longE, Vector3 shortE, float shortRatio)
+            {
+                origin    = p0;
+                edgeLong  = longE; // longE;
+                edgeShort = shortE; // length same as longE, but direction is different
+                lenLong   = longE.magnitude;
+                ratio = shortRatio;
+            }
+            public Vector3 UVToWorld(Vector2 uv)
+                => origin + edgeLong * uv.x * lenLong + edgeShort * uv.y * lenLong;
+            public Vector3 DirUVToWorld(Vector2 dirUv)
+                => edgeLong * dirUv.x * lenLong + edgeShort * dirUv.y * lenLong;
         }
 
-        /// <summary>
-        /// 将台面 <paramref name="bounds"/> 和球心 <paramref name="ballWorldPos"/>
-        /// 映射到归一化矩形坐标系。
-        /// </summary>
-        /// <remarks>
-        /// bounds 需按顺时针 / 逆时针给出四个顶点 (p0‑p1‑p2‑p3)。  
-        /// 返回值 TableSize.x == 1，TableSize.y == ratio (短 / 长)。  
-        /// BallUVs 中 u ∈ [0,1]，v ∈ [0,ratio]。
-        /// </remarks>
-        public static TableMappingResult? MapBallsToTable(
-                List<Vector3> bounds,
-                List<Vector3> ballWorldPos)
+        public static bool TryBuildBasis(List<Vector3> bounds, out TableBasis basis)
         {
-            if (bounds == null || bounds.Count != 4)
-                return null;
+            basis = default;
+            if (bounds == null || bounds.Count != 4) return false;
 
-            // —— 1. 取 p0 为原点，p0→p1、p0→p3 为两条相邻边 ——
             Vector3 p0 = bounds[0];
-            Vector3 edgeA = bounds[1] - p0;   // p0→p1
-            Vector3 edgeB = bounds[3] - p0;   // p0→p3
+            Vector3 eA = bounds[1] - p0;
+            Vector3 eB = bounds[3] - p0;
 
-            // —— 2. 保证 edgeLong 为较长边 ——
-            Vector3 edgeLong, edgeShort;
-            if (edgeA.sqrMagnitude >= edgeB.sqrMagnitude)
+            Vector3 eLong  = eA.sqrMagnitude >= eB.sqrMagnitude ? eA : eB;
+            Vector3 eShort = eA.sqrMagnitude >= eB.sqrMagnitude ? eB : eA;
+
+            if (eLong.sqrMagnitude < 1e-6f || eShort.sqrMagnitude < 1e-6f)
+                return false;
+
+            float shortRatio = eShort.magnitude / eLong.magnitude;
+            basis = new TableBasis(p0, eLong, eShort/shortRatio, shortRatio);
+            return true;
+        }
+
+        // mapping result -----------------------------------------------------
+        public struct TableMappingResult
+        {
+            public Vector2 TableSize;
+            public List<Vector2> BallUVs;
+            public Vector2 StickPos;
+            public Vector2 StickDir;
+        }
+
+        // main mapping -------------------------------------------------------
+        public static TableMappingResult? MapBallsToTable(
+            List<Vector3> bounds,
+            List<Vector3> balls,
+            Vector3 stickPos,
+            Vector3 stickDir)
+        {
+            if (!TryBuildBasis(bounds, out TableBasis tb)) return null;
+
+            Vector3 el = tb.edgeLong, es = tb.edgeShort;
+            float a11 = Vector3.Dot(el, el);
+            float a12 = Vector3.Dot(el, es);
+            float a22 = Vector3.Dot(es, es);
+            float det = a11 * a22 - a12 * a12;
+            if (Mathf.Abs(det) < 1e-6f) return null;
+
+            Vector3 n = Vector3.Cross(el, es).normalized;
+
+            Vector2 W2U(Vector3 w)
             {
-                edgeLong = edgeA;
-                edgeShort = edgeB;
+                Vector3 d = w - tb.origin;
+                Vector3 p = d - Vector3.Dot(d, n) * n;
+                float b1 = Vector3.Dot(p, el);
+                float b2 = Vector3.Dot(p, es);
+                float u = (b1 * a22 - b2 * a12) / det;
+                float v = (a11 * b2 - a12 * b1) / det;
+                return new Vector2(u / tb.lenLong, v / tb.lenLong);
+            }
+
+            var uvBalls = new List<Vector2>(balls.Count);
+            foreach (var w in balls) uvBalls.Add(W2U(w));
+
+            Vector2 stickPosUv = W2U(stickPos);
+
+            Vector3 dirProj = stickDir - Vector3.Dot(stickDir, n) * n;
+            Vector2 stickDirUv;
+            if (dirProj.sqrMagnitude < 1e-8f)
+            {
+                stickDirUv = Vector2.right;
             }
             else
             {
-                edgeLong = edgeB;
-                edgeShort = edgeA;
-            }
-
-            float lenLong = edgeLong.magnitude;
-            float lenShort = edgeShort.magnitude;
-            float ratio = lenShort / lenLong;          // < 1
-
-            // —— 3. 预计算求解系数矩阵 (edgeLong, edgeShort)⁻¹ ——
-            //      delta = u*edgeLong + v*edgeShort → 求 (u,v)
-            float a11 = Vector3.Dot(edgeLong, edgeLong);
-            float a12 = Vector3.Dot(edgeLong, edgeShort);
-            float a22 = Vector3.Dot(edgeShort, edgeShort);
-            float det = a11 * a22 - a12 * a12;
-            if (Mathf.Abs(det) < 1e-6f)
-                return null; // 线性方程组无解
-
-            Vector3 n = Vector3.Cross(edgeLong, edgeShort).normalized; // 平面法向量
-
-            // —— 4. 处理每个球 ——
-            List<Vector2> uvList = new(ballWorldPos.Count);
-            foreach (var pos in ballWorldPos)
-            {
-                // 4.1 投影到桌面平面
-                Vector3 delta = pos - p0;
-                float distN = Vector3.Dot(delta, n);
-                Vector3 proj = delta - distN * n;
-
-                // 4.2 线性求解 (u,v)
-                float b1 = Vector3.Dot(proj, edgeLong);
-                float b2 = Vector3.Dot(proj, edgeShort);
-
-                float u = (b1 * a22 - b2 * a12) / det;   // 真实长度坐标
-                float v = (a11 * b2 - a12 * b1) / det;
-
-                // 4.3 归一化：长边映射到 0‑1
-                float uNorm = u / lenLong;
-                float vNorm = v / lenLong;                // 注意除以 lenLong
-
-                uvList.Add(new Vector2(uNorm, vNorm));
+                float b1d = Vector3.Dot(dirProj, el);
+                float b2d = Vector3.Dot(dirProj, es);
+                float uD = (b1d * a22 - b2d * a12) / det;
+                float vD = (a11 * b2d - a12 * b1d) / det;
+                stickDirUv = new Vector2(uD / tb.lenLong, vD / tb.lenLong).normalized;
             }
 
             return new TableMappingResult
             {
-                TableSize = new Vector2(1f, ratio),
-                BallUVs = uvList
+                TableSize = new Vector2(1f, tb.ratio),
+                BallUVs   = uvBalls,
+                StickPos  = stickPosUv,
+                StickDir  = stickDirUv
             };
         }
     }

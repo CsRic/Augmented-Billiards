@@ -34,6 +34,9 @@ namespace PassthroughCameraSamples.MultiObjectDetection
         private List<GameObject> m_boxPool = new();
         private Transform m_displayLocation;
 
+        public Pose startCamePoseWorld;
+        public PassthroughCameraIntrinsics startIntr;
+
         //bounding box data
         public struct BoundingBox
         {
@@ -105,8 +108,12 @@ namespace PassthroughCameraSamples.MultiObjectDetection
             OnObjectsDetected?.Invoke(maxBoxes);
 
             //Get the camera intrinsics
-            var intrinsics = PassthroughCameraUtils.GetCameraIntrinsics(CameraEye);
-            var camRes = intrinsics.Resolution;
+            // var intrinsics = PassthroughCameraUtils.GetCameraIntrinsics(CameraEye);
+            // var camRes = intrinsics.Resolution;
+
+
+            var intrinsics = startIntr;                 // ← 修改
+            var camRes     = intrinsics.Resolution;
 
             //Draw the bounding boxes
             for (var n = 0; n < maxBoxes; n++)
@@ -122,7 +129,8 @@ namespace PassthroughCameraSamples.MultiObjectDetection
 
                 // Get the 3D marker world position using Depth Raycast
                 var centerPixel = new Vector2Int(Mathf.RoundToInt(perX * camRes.x), Mathf.RoundToInt((1.0f - perY) * camRes.y));
-                var ray = PassthroughCameraUtils.ScreenPointToRayInWorld(CameraEye, centerPixel);
+                Ray ray = GenericPassthroughCameraUtils.PixelToRayInWorld(
+                      centerPixel, intrinsics, startCamePoseWorld); 
                 var worldPos = m_environmentRaycast.PlaceGameObjectByScreenPos(ray);
 
                 // Create a new bounding box
