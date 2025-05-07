@@ -6,3 +6,4 @@ UserSettings/
 .*/
 !.gitignore
 Assets/PassthroughCameraApiSamples/MultiObjectDetection/SentisInference/Model/*
+Assets/PassthroughCameraApiSamples/AugmentedBilliards/Models/*
