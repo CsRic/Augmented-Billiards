@@ -13,6 +13,7 @@ namespace PassthroughCameraSamples.CameraToWorld
         [SerializeField] private WebCamTextureManager m_webCamTextureManager;
         [SerializeField] private Text m_debugText;
         [SerializeField] private RawImage m_image;
+        [SerializeField, Range(0f, 1f)] private float m_imageAlpha = 1.0f; // 默认不透明，允许用户调节
         private Texture2D m_cameraSnapshot;
         private Color32[] m_pixelsBuffer;
 
@@ -39,6 +40,7 @@ namespace PassthroughCameraSamples.CameraToWorld
         public void ResumeStreamingFromCamera()
         {
             m_image.texture = m_webCamTextureManager.WebCamTexture;
+            SetImageVisualTransparency();
         }
 
         private IEnumerator Start()
@@ -56,6 +58,21 @@ namespace PassthroughCameraSamples.CameraToWorld
             if (PassthroughCameraPermissions.HasCameraPermission != true)
             {
                 m_debugText.text = "No permission granted.";
+            }
+        }
+
+        public Texture2D GetSnapshot()
+        {
+            return m_cameraSnapshot;
+        }
+
+        private void SetImageVisualTransparency()
+        {
+            if (m_image != null)
+            {
+                Color color = m_image.color;
+                color.a = m_imageAlpha;
+                m_image.color = color;
             }
         }
     }

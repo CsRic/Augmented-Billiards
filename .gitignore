@@ -5,3 +5,4 @@ Temp/
 UserSettings/
 .*/
 !.gitignore
+Assets/PassthroughCameraApiSamples/MultiObjectDetection/SentisInference/Model/*

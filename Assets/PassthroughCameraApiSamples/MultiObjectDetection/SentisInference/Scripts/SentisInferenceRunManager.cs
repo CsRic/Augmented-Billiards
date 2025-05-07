@@ -15,7 +15,7 @@ namespace PassthroughCameraSamples.MultiObjectDetection
         [SerializeField] private Vector2Int m_inputSize = new(640, 640);
         [SerializeField] private BackendType m_backend = BackendType.CPU;
         [SerializeField] private ModelAsset m_sentisModel;
-        [SerializeField] private int m_layersPerFrame = 25;
+        [SerializeField] private int m_layersPerFrame = 75;
         [SerializeField] private TextAsset m_labelsAsset;
         public bool IsModelLoaded { get; private set; } = false;
 
@@ -39,7 +39,8 @@ namespace PassthroughCameraSamples.MultiObjectDetection
         private Tensor<float> m_pullOutput;
         private Tensor<int> m_pullLabelIDs;
         private bool m_isWaiting = false;
-
+        private float m_delayPauseBackTime = 0;
+        public event Action OnInferenceResultsReady;
         #region Unity Functions
         private IEnumerator Start()
         {
@@ -48,6 +49,7 @@ namespace PassthroughCameraSamples.MultiObjectDetection
 
             m_uiInference.SetLabels(m_labelsAsset);
             LoadModel();
+            m_delayPauseBackTime = Time.time;
         }
 
         private void Update()
@@ -228,6 +230,7 @@ namespace PassthroughCameraSamples.MultiObjectDetection
                     break;
                 case 3:
                     m_uiInference.DrawUIBoxes(m_output, m_labelIDs, m_inputSize.x, m_inputSize.y);
+                    OnInferenceResultsReady?.Invoke();
                     m_download_state = 5;
                     break;
                 case 4:

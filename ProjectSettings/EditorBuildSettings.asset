@@ -29,6 +29,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/PassthroughCameraApiSamples/AnchorToWorld/AnchorToWorldScene.unity
     guid: daaea561821457348a234f3a72e0d40e
+  - enabled: 1
+    path: Assets/PassthroughCameraApiSamples/AugmentedBilliards/AugmentedBilliardsScene.unity
+    guid: 7a25639ca3283c1479d7c4cb139a6836
   m_configObjects:
     Unity.XR.Oculus.Settings: {fileID: 11400000, guid: b9d6e3dcd00ca744cb0acf637924f2ec, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}

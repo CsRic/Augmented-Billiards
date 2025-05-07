@@ -73,6 +73,8 @@
     <Compile Include="Assets\PassthroughCameraApiSamples\ShaderSample\Scripts\ShaderSampleManager.cs" />
     <Compile Include="Assets\PassthroughCameraApiSamples\PassthroughCamera\Scripts\PassthroughCameraDebugger.cs" />
     <Compile Include="Assets\PassthroughCameraApiSamples\BrightnessEstimation\Scripts\BrightnessEstimationManager.cs" />
+    <Compile Include="Assets\PassthroughCameraApiSamples\AugmentedBilliards\Scripts\CameraToWorldManagerPassive.cs" />
+    <Compile Include="Assets\PassthroughCameraApiSamples\AnchorToWorld\Scripts\CameraToWorldManagerSimple.cs" />
     <Compile Include="Assets\PassthroughCameraApiSamples\AnchorToWorld\Scripts\AnchorManager.cs" />
     <Compile Include="Assets\PassthroughCameraApiSamples\PassthroughCamera\Scripts\WebCamTextureManager.cs" />
     <Compile Include="Assets\PassthroughCameraApiSamples\MultiObjectDetection\SentisInference\Scripts\SentisObjectDetectedUiManager.cs" />
@@ -98,6 +100,7 @@
     <None Include="Assets\PassthroughCameraApiSamples\LICENSE.txt" />
     <None Include="Assets\PassthroughCameraApiSamples\ShaderSample\Shaders\ShaderSampleWater.shader" />
     <None Include="Assets\PassthroughCameraApiSamples\StartScene\Fonts\Montserrat\OFL.txt" />
+    <None Include="Assets\PassthroughCameraApiSamples\AugmentedBilliards\Models\classes.txt" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="UnityEngine">

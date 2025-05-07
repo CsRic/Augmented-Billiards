@@ -12,7 +12,7 @@ namespace PassthroughCameraSamples.MultiObjectDetection.Editor
     [CustomEditor(typeof(SentisInferenceRunManager))]
     public class SentisModelEditorConverter : UnityEditor.Editor
     {
-        private const string FILEPATH = "Assets/PassthroughCameraApiSamples/MultiObjectDetection/SentisInference/Model/yolov9sentis.sentis";
+        private const string FILEPATH = "Assets/PassthroughCameraApiSamples/MultiObjectDetection/SentisInference/Model/yolo_billiards_sentis.sentis";
         private SentisInferenceRunManager m_targetClass;
         private float m_iouThreshold;
         private float m_scoreThreshold;

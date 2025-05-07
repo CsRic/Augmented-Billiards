@@ -28,6 +28,22 @@ public class AnchorManager : MonoBehaviour
         UpdatePreview();
     }
 
+    public List<Vector3> getBounds()
+    {
+        if (!stable) return null;
+        List<Vector3> bounds = new List<Vector3>();
+        foreach (var anchor in anchors)
+        {
+            bounds.Add(anchor.transform.position);
+        }
+        bounds.Add(autoAnchor.transform.position);
+        return bounds;
+    }
+
+    public bool IsStable()
+    {
+        return stable;
+    }
     void AddAnchor(Vector3 position)
     {
         var anchor = Instantiate(anchorPrefab, position, Quaternion.identity);
