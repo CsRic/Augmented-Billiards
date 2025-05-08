@@ -33,7 +33,7 @@ namespace PassthroughCameraSamples.MultiObjectDetection
         [Header("Sentis inference reference")]
         [SerializeField] private SentisInferenceRunManager m_runInference;
         [SerializeField] private SentisInferenceUiManager  m_uiInference;
-        [SerializeField] private AnchorManager             m_anchorManager = null;
+        [SerializeField] public AnchorManager             m_anchorManager = null;
         [SerializeField] private VirtualStick              m_virtualStick  = null;
 
         [Header("Auto‑spawn settings")]
@@ -66,6 +66,7 @@ namespace PassthroughCameraSamples.MultiObjectDetection
 
         private LineRenderer m_stickLine = null;
         private List<LineRenderer> m_predictLines = new();
+        private float ballRealRadius = 0.02858f;
 
         // inner data ----------------------------------------------------------
         private class MarkerInfo
@@ -83,10 +84,11 @@ namespace PassthroughCameraSamples.MultiObjectDetection
         }
         public struct TableState
         {
-            public Vector2                TableSize;
+            public Vector2 TableSize;
             public List<BallInfoNormalized> Balls;
-            public Vector2                StickPos;
-            public Vector2                StickDir;
+            public Vector2 StickPos;
+            public Vector2 StickDir;
+            public float ballRadiusRatio;
         }
 
         // ───────────────────────── Unity lifecycle ──────────────────────────
@@ -267,17 +269,19 @@ namespace PassthroughCameraSamples.MultiObjectDetection
             for (int i = 0; i < m_activeMarkers.Count; ++i)
                 balls.Add(new BallInfoNormalized { ClassName = m_activeMarkers[i].className,
                                                    UV = res.Value.BallUVs[i] });
-
+            TableCoordinateUtil.TryBuildBasis(bounds, out TableCoordinateUtil.TableBasis tb);
+            float ballRadiusRatio = ballRealRadius / tb.lenLong;
             return new TableState
             {
                 TableSize = res.Value.TableSize,
-                Balls     = balls,
-                StickPos  = res.Value.StickPos,
-                StickDir  = res.Value.StickDir
+                Balls = balls,
+                StickPos = res.Value.StickPos,
+                StickDir = res.Value.StickDir,
+                ballRadiusRatio = ballRadiusRatio
             };
         }
 
-        public void RenderNormalizedState(TableState state)
+        public void RenderNormalizedState(TableState state, List<List<Vector2>> predictedTrajectories)
         {
             // clear previous
             foreach (var g in m_stateDebugObjs) Destroy(g);
@@ -309,7 +313,7 @@ namespace PassthroughCameraSamples.MultiObjectDetection
             sp.transform.localScale = Vector3.one * m_debugPointScale;
             if (m_debugRedMat != null)
                 sp.GetComponent<Renderer>().material = m_debugRedMat;
-            m_stateDebugObjs.Add(sp); 
+            m_stateDebugObjs.Add(sp);
 
             // stick dir line
             Vector3 dirW = D(state.StickDir);
@@ -339,6 +343,20 @@ namespace PassthroughCameraSamples.MultiObjectDetection
             // eS.useWorldSpace = true;
             // if (m_debugRedMat != null) eS.material = m_debugRedMat;
             // m_predictLines.Add(eS);
+
+            // predicted trajectories
+            foreach (var pred in predictedTrajectories)
+            {
+                var g = new GameObject("PredictedTrajectory");
+                var lr = g.AddComponent<LineRenderer>();
+                lr.positionCount = pred.Count;
+                for (int i = 0; i < pred.Count; ++i)
+                    lr.SetPosition(i, W(pred[i]));
+                lr.startWidth = lr.endWidth = 0.01f;
+                lr.useWorldSpace = true;
+                if (m_debugRedMat != null) lr.material = m_debugRedMat;
+                m_predictLines.Add(lr);
+            }
         }
     }
 
@@ -365,9 +383,9 @@ namespace PassthroughCameraSamples.MultiObjectDetection
                 ratio = shortRatio;
             }
             public Vector3 UVToWorld(Vector2 uv)
-                => origin + edgeLong * uv.x * lenLong + edgeShort * uv.y * lenLong;
+                => origin + edgeLong * uv.x + edgeShort * uv.y;
             public Vector3 DirUVToWorld(Vector2 dirUv)
-                => edgeLong * dirUv.x * lenLong + edgeShort * dirUv.y * lenLong;
+                => edgeLong * dirUv.x + edgeShort * dirUv.y;
         }
 
         public static bool TryBuildBasis(List<Vector3> bounds, out TableBasis basis)
@@ -425,7 +443,7 @@ namespace PassthroughCameraSamples.MultiObjectDetection
                 float b2 = Vector3.Dot(p, es);
                 float u = (b1 * a22 - b2 * a12) / det;
                 float v = (a11 * b2 - a12 * b1) / det;
-                return new Vector2(u / tb.lenLong, v / tb.lenLong);
+                return new Vector2(u, v);
             }
 
             var uvBalls = new List<Vector2>(balls.Count);
@@ -445,7 +463,7 @@ namespace PassthroughCameraSamples.MultiObjectDetection
                 float b2d = Vector3.Dot(dirProj, es);
                 float uD = (b1d * a22 - b2d * a12) / det;
                 float vD = (a11 * b2d - a12 * b1d) / det;
-                stickDirUv = new Vector2(uD / tb.lenLong, vD / tb.lenLong).normalized;
+                stickDirUv = new Vector2(uD, vD).normalized;
             }
 
             return new TableMappingResult
